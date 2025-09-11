@@ -3,17 +3,18 @@
 
 using namespace facebook;
 
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "RNTP", __VA_ARGS__)
-
 namespace rntp {
 
-jobject createHashMap(JNIEnv* env) {
+// Forward declaration for internal static converter used below
+static jobject jsiValueToJava(JNIEnv* env, jsi::Runtime& rt, const jsi::Value& value);
+
+static jobject createHashMap(JNIEnv* env) {
     jclass hashMapClass = env->FindClass("java/util/HashMap");
     jmethodID hashMapCtor = env->GetMethodID(hashMapClass, "<init>", "()V");
     return env->NewObject(hashMapClass, hashMapCtor);
 }
 
-void putInHashMap(JNIEnv* env, jobject map, const std::string& key, jobject value) {
+static void putInHashMap(JNIEnv* env, jobject map, const std::string& key, jobject value) {
     jclass hashMapClass = env->FindClass("java/util/HashMap");
     jmethodID putMethod = env->GetMethodID(hashMapClass, "put",
         "(Ljava/lang/Object;Ljava/lang/Object;)Ljava/lang/Object;");
@@ -23,7 +24,7 @@ void putInHashMap(JNIEnv* env, jobject map, const std::string& key, jobject valu
     if (value) env->DeleteLocalRef(value);
 }
 
-jobject jsiArrayToList(JNIEnv* env, jsi::Runtime& rt, const jsi::Array& arr) {
+static jobject jsiArrayToList(JNIEnv* env, jsi::Runtime& rt, const jsi::Array& arr) {
     jclass arrayListClass = env->FindClass("java/util/ArrayList");
     jmethodID arrayListCtor = env->GetMethodID(arrayListClass, "<init>", "()V");
     jmethodID addMethod = env->GetMethodID(arrayListClass, "add", "(Ljava/lang/Object;)Z");
@@ -50,7 +51,7 @@ jobject jsiObjectToMap(JNIEnv* env, jsi::Runtime& rt, const jsi::Object& obj) {
     return map;
 }
 
-jobject jsiValueToJava(JNIEnv* env, jsi::Runtime& rt, const jsi::Value& value) {
+static jobject jsiValueToJava(JNIEnv* env, jsi::Runtime& rt, const jsi::Value& value) {
     if (value.isUndefined() || value.isNull()) return nullptr;
 
     if (value.isBool()) {

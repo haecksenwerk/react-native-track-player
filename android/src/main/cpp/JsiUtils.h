@@ -6,12 +6,8 @@
 
 namespace rntp {
 
-// Collections and value conversion
-jobject createHashMap(JNIEnv* env);
-void putInHashMap(JNIEnv* env, jobject map, const std::string& key, jobject value);
+// Collections and value conversion (external)
 jobject jsiObjectToMap(JNIEnv* env, facebook::jsi::Runtime& rt, const facebook::jsi::Object& obj);
-jobject jsiArrayToList(JNIEnv* env, facebook::jsi::Runtime& rt, const facebook::jsi::Array& arr);
-jobject jsiValueToJava(JNIEnv* env, facebook::jsi::Runtime& rt, const facebook::jsi::Value& value);
 jobject wrapValueInMap(JNIEnv* env, facebook::jsi::Runtime& rt, const facebook::jsi::Value& value);
 
 // Error and string helpers
