@@ -20,6 +20,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.CacheBitmapLoader
 import androidx.media3.session.LibraryResult
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Rating
 import androidx.media3.common.util.BitmapLoader
 import androidx.media3.exoplayer.ExoPlayer
@@ -30,6 +31,7 @@ import androidx.media3.session.SessionCommands
 import androidx.media3.session.SessionResult
 import com.doublesymmetry.kotlinaudio.models.*
 import com.doublesymmetry.kotlinaudio.players.QueuedAudioPlayer
+import com.doublesymmetry.trackplayer.JsiBridge
 import com.doublesymmetry.trackplayer.HeadlessJsMediaService
 import com.doublesymmetry.trackplayer.extensions.NumberExt.Companion.toMilliseconds
 import com.doublesymmetry.trackplayer.extensions.NumberExt.Companion.toSeconds
@@ -45,6 +47,7 @@ import com.doublesymmetry.trackplayer.utils.BundleUtils
 import com.doublesymmetry.trackplayer.utils.BundleUtils.setRating
 import com.doublesymmetry.trackplayer.utils.CoilBitmapLoader
 import com.doublesymmetry.trackplayer.utils.buildMediaItem
+import com.doublesymmetry.trackplayer.utils.buildMediaItemListFromAny
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
 import com.google.common.collect.ImmutableList
@@ -52,6 +55,7 @@ import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.guava.future
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 import kotlin.system.exitProcess
@@ -64,12 +68,8 @@ class MusicService : HeadlessJsMediaService() {
     private val scope = MainScope()
     private lateinit var fakePlayer: ExoPlayer
     private lateinit var mediaSession: MediaLibrarySession
+    private lateinit var jsiBridge: JsiBridge
     private var progressUpdateJob: Job? = null
-    var mediaTree: Map<String, List<MediaItem>> = HashMap()
-    var mediaTreeStyle: List<Int> = listOf(
-        MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM,
-        MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
-    )
     private var sessionCommands: SessionCommands? = null
     private var playerCommands: Player.Commands? = null
     private var customLayout: List<CommandButton> = listOf()
@@ -96,8 +96,39 @@ class MusicService : HeadlessJsMediaService() {
         }
     }
 
+    suspend fun callJS(fnName: String, input: String): Map<String, Any?> {
+      if (!::jsiBridge.isInitialized) {
+          // FIXME: might need to throw here as setting up the JsiBridge
+          // is not sync.
+          ensureJsiSetup()
+      }
+
+      Timber.tag("RNTP").d("callJS $fnName")
+      val result = jsiBridge.callJSAndResolve(fnName, input)
+      return result
+    }
+
+    fun ensureJsiSetup() {
+      Timber.tag("RNTP").d("ensureJsiSetup: attempt")
+      if (::jsiBridge.isInitialized) {
+          Timber.tag("RNTP").d("ensureJsiSetup: already initialized")
+          return;
+      }
+
+      val context = getReactContext()
+      if (context == null) {
+          Timber.tag("RNTP").d("ensureJsiSetup: failed due to no context")
+          return;
+      }
+
+      Timber.tag("RNTP").d("ensureJsiSetup: finished")
+      jsiBridge = JsiBridge(context)
+    }
+
     @ExperimentalCoroutinesApi
     override fun onCreate() {
+        ensureJsiSetup()
+
         Timber.plant(object : Timber.DebugTree() {
             override fun createStackElementTag(element: StackTraceElement): String? {
                 return "RNTP-${element.className}:${element.methodName}"
@@ -171,7 +202,7 @@ class MusicService : HeadlessJsMediaService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         onStartCommandIntentValid = intent != null
-        Timber.tag("RNTP").d("onStartCommand", "${intent?.action}, ${intent?.`package`}")
+        Timber.tag("RNTP").d("onStartCommand: ${intent?.action}, ${intent?.`package`}")
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             // HACK: this is not supposed to be here. I definitely screwed up. but Why?
             onMediaKeyEvent(intent)
@@ -218,6 +249,7 @@ class MusicService : HeadlessJsMediaService() {
         fakePlayer.release()
         mediaSession.player = player.forwardingPlayer
         observeEvents()
+        ensureJsiSetup()
     }
 
     @MainThread
@@ -702,7 +734,7 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     override fun onBind(intent: Intent?): IBinder? {
         val intentAction = intent?.action
-        Timber.tag("RNTP").d("onBind", "intentAction = $intentAction")
+        Timber.tag("RNTP").d("onBind: intentAction = $intentAction")
         return if (intentAction != null) {
             super.onBind(intent)
         } else {
@@ -712,7 +744,7 @@ class MusicService : HeadlessJsMediaService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         val intentAction = intent?.action
-        Timber.tag("RNTP").d("onUnbind", "intentAction = $intentAction")
+        Timber.tag("RNTP").d("onUnbind: intentAction = $intentAction")
         return super.onUnbind(intent)
     }
 
@@ -724,7 +756,7 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     override fun onTaskRemoved(rootIntent: Intent?) {
         onUnbind(rootIntent)
-        Timber.tag("RNTP").d("onTaskRemoved", "isInitialized = ${::player.isInitialized}, appKilledPlaybackBehavior = $appKilledPlaybackBehavior")
+        Timber.tag("RNTP").d("onTaskRemoved: isInitialized = ${::player.isInitialized}, appKilledPlaybackBehavior = $appKilledPlaybackBehavior")
         if (!::player.isInitialized) {
             mediaSession.release()
             return
@@ -732,11 +764,11 @@ class MusicService : HeadlessJsMediaService() {
 
         when (appKilledPlaybackBehavior) {
             AppKilledPlaybackBehavior.PAUSE_PLAYBACK -> {
-                Timber.tag("RNTP").d("onTaskRemoved", "Pausing playback - appKilledPlaybackBehavior = $appKilledPlaybackBehavior")
+                Timber.tag("RNTP").d("onTaskRemoved: Pausing playback - appKilledPlaybackBehavior = $appKilledPlaybackBehavior")
                 player.pause()
             }
             AppKilledPlaybackBehavior.STOP_PLAYBACK_AND_REMOVE_NOTIFICATION -> {
-              Timber.tag("RNTP").d("onTaskRemoved", "Killing service - appKilledPlaybackBehavior = $appKilledPlaybackBehavior")
+                Timber.tag("RNTP").d("onTaskRemoved: Killing service - appKilledPlaybackBehavior = $appKilledPlaybackBehavior")
                 mediaSession.release()
                 player.clear()
                 player.stop()
@@ -790,17 +822,8 @@ class MusicService : HeadlessJsMediaService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaLibrarySession {
-        Timber.tag("RNTP").d("onGetSession", "${controllerInfo.packageName}")
+        Timber.tag("RNTP").d("onGetSession: ${controllerInfo.packageName}")
         return mediaSession
-    }
-
-    fun notifyChildrenChanged() {
-        mediaSession.connectedControllers.forEach { controller ->
-            mediaTree.forEach { it ->
-                mediaSession.notifyChildrenChanged(controller, it.key, it.value.size, null)
-            }
-
-        }
     }
 
     @MainThread
@@ -811,7 +834,7 @@ class MusicService : HeadlessJsMediaService() {
     @MainThread
     override fun onDestroy() {
         if (::player.isInitialized) {
-            Timber.tag("RNTP").d("onDestroy", "Releasing media session and destroying player")
+            Timber.tag("RNTP").d("onDestroy: Releasing media session and destroying player")
             mediaSession.release()
             player.destroy()
         }
@@ -904,7 +927,7 @@ class MusicService : HeadlessJsMediaService() {
             session: MediaSession,
             controller: MediaSession.ControllerInfo
         ): MediaSession.ConnectionResult {
-            Timber.tag("RNTP").d("onConnect", "${controller.packageName}")
+            Timber.tag("RNTP").d("onConnect: ${controller.packageName}")
             val isMediaNotificationController = session.isMediaNotificationController(controller)
             val isAutomotiveController = session.isAutomotiveController(controller)
             val isAutoCompanionController = session.isAutoCompanionController(controller)
@@ -969,22 +992,32 @@ class MusicService : HeadlessJsMediaService() {
             browser: MediaSession.ControllerInfo,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<MediaItem>> {
-            Timber.tag("RNTP").d("onGetLibraryRoot", "${browser.packageName}")
+            Timber.tag("RNTP").d("onGetLibraryRoot: { package: ${browser.packageName} }")
             val rootExtras = Bundle().apply {
                 putBoolean("android.media.browse.CONTENT_STYLE_SUPPORTED", true)
-                putInt("android.media.browse.CONTENT_STYLE_BROWSABLE_HINT", mediaTreeStyle[0])
-                putInt("android.media.browse.CONTENT_STYLE_PLAYABLE_HINT", mediaTreeStyle[1])
+                putInt(
+                  "android.media.browse.CONTENT_STYLE_BROWSABLE_HINT",
+                  MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+                )
+                putInt(
+                  "android.media.browse.CONTENT_STYLE_PLAYABLE_HINT",
+                  MediaConstants.DESCRIPTION_EXTRAS_VALUE_CONTENT_STYLE_LIST_ITEM
+                )
             }
             val libraryParams = LibraryParams.Builder().setExtras(rootExtras).build()
             // https://github.com/androidx/media/issues/1731#issuecomment-2411109462
             val mRootItem = when (browser.packageName) {
                 "com.google.android.googlequicksearchbox" -> {
-                    if (mediaTree[AA_FOR_YOU_KEY] == null) rootItem else forYouItem
+                    // TODO: make "For You" work
+                    // if (mediaTree[AA_FOR_YOU_KEY] == null) rootItem else forYouItem
+                    rootItem
                 }
 
                 else -> rootItem
             }
-            return Futures.immediateFuture(LibraryResult.ofItem(mRootItem, libraryParams))
+            return Futures.immediateFuture(
+              LibraryResult.ofItem(mRootItem, libraryParams)
+            )
         }
 
         override fun onGetChildren(
@@ -995,17 +1028,22 @@ class MusicService : HeadlessJsMediaService() {
             pageSize: Int,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-            Timber.tag("RNTP").d("onGetChildren")
+            Timber.tag("RNTP").d("onGetChildren: {parentId: $parentId, page: $page, pageSize: $pageSize }")
             emit(
               MusicEvents.BUTTON_BROWSE,
               Bundle().apply { putString("mediaId", parentId) }
             );
-            return Futures.immediateFuture(
-                LibraryResult.ofItemList(
-                    mediaTree[parentId] ?: listOf(),
+
+            // Launch coroutine and return ListenableFuture
+            return CoroutineScope(Dispatchers.Main).future {
+                val jsResult = callJS("__rntpAAGetChildrenAsync", parentId)
+                val value = jsResult["value"]
+
+                return@future LibraryResult.ofItemList(
+                    buildMediaItemListFromAny(value),
                     null
                 )
-            )
+            }
         }
 
         override fun onGetItem(
@@ -1013,7 +1051,7 @@ class MusicService : HeadlessJsMediaService() {
             browser: MediaSession.ControllerInfo,
             mediaId: String
         ): ListenableFuture<LibraryResult<MediaItem>> {
-            Timber.tag("RNTP").d("onGetItem", "${browser.packageName}, mediaId = $mediaId")
+            Timber.tag("RNTP").d("onGetItem: ${browser.packageName}, mediaId = $mediaId")
             // emit(MusicEvents.BUTTON_PLAY_FROM_ID, Bundle().apply { putString("id", mediaId) })
             return Futures.immediateFuture(LibraryResult.ofItem(rootItem, null))
         }
@@ -1024,7 +1062,7 @@ class MusicService : HeadlessJsMediaService() {
             query: String,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<Void>> {
-            Timber.tag("RNTP").d("onSearch", "${browser.packageName}, query = $query")
+            Timber.tag("RNTP").d("onSearch: ${browser.packageName}, query = $query")
             return super.onSearch(session, browser, query, params)
         }
 
@@ -1033,7 +1071,7 @@ class MusicService : HeadlessJsMediaService() {
             controller: MediaSession.ControllerInfo,
             mediaItems: MutableList<MediaItem>
         ): ListenableFuture<MutableList<MediaItem>> {
-            Timber.tag("RNTP").d("onAddMediaItems", "${controller.packageName}, ${mediaItems[0].mediaId}, ${mediaItems.size}")
+            Timber.tag("RNTP").d("onAddMediaItems: ${controller.packageName}, ${mediaItems[0].mediaId}, ${mediaItems.size}")
             return super.onAddMediaItems(mediaSession, controller, mediaItems)
         }
 
@@ -1044,7 +1082,7 @@ class MusicService : HeadlessJsMediaService() {
             startIndex: Int,
             startPositionMs: Long
         ): ListenableFuture<MediaSession.MediaItemsWithStartPosition> {
-            Timber.tag("RNTP").d("onSetMediaItems", "${controller.packageName}, ${mediaItems[0].toBundle()}")
+            Timber.tag("RNTP").d("onSetMediaItems: ${controller.packageName}, ${mediaItems[0].toBundle()}")
             if (mediaItems[0].requestMetadata.searchQuery == null) {
                 emit(MusicEvents.BUTTON_PLAY_FROM_ID, Bundle().apply {
                     putString("id", mediaItems[0].mediaId)
@@ -1083,7 +1121,7 @@ class MusicService : HeadlessJsMediaService() {
             pageSize: Int,
             params: LibraryParams?
         ): ListenableFuture<LibraryResult<ImmutableList<MediaItem>>> {
-            Timber.tag("RNTP").d("onGetSearchResult", "${browser.packageName}, $query")
+            Timber.tag("RNTP").d("onGetSearchResult: ${browser.packageName}, $query")
             return super.onGetSearchResult(session, browser, query, page, pageSize, params)
         }
 

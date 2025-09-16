@@ -4,13 +4,15 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import com.google.common.collect.ImmutableList
+import timber.log.Timber
 
 fun buildMediaItem(
     title: String? = null,
     subtitle: String? = null,
     mediaId: String,
     isPlayable: Boolean,
-    subtitleConfigurations: List<MediaItem.SubtitleConfiguration> = mutableListOf(),
+    subtitleConfigurations: List<MediaItem.SubtitleConfiguration> = listOf<MediaItem.SubtitleConfiguration>(),
     album: String? = null,
     artist: String? = null,
     genre: String? = null,
@@ -38,4 +40,56 @@ fun buildMediaItem(
         .setMediaMetadata(metadata)
         .setUri(sourceUri)
         .build()
+}
+
+
+fun buildMediaItemListFromAny(value: Any?): ImmutableList<MediaItem> {
+    if (value !is ArrayList<*>) {
+        return ImmutableList.copyOf(listOf<MediaItem>())
+    }
+
+    val items = mutableListOf<MediaItem>()
+    for (item in value) {
+        if (item !is java.util.HashMap<*, *>) {
+            continue
+        }
+
+        // guard against invalid mediaIds
+        if (
+            item["mediaId"] !is String ||
+            item["mediaId"] == null ||
+            item["mediaId"] == ""
+        ) {
+            continue
+        }
+
+        items.add(
+            buildMediaItem(
+                item["title"] as? String ?: null,
+                item["subtitle"] as? String ?: null,
+                item["mediaId"] as String,
+                item["isPlayable"] as? Boolean ?: false,
+                emptyList<MediaItem.SubtitleConfiguration>(),
+                item["album"] as? String ?: null,
+                item["artist"] as? String ?: null,
+                item["genre"] as? String ?: null,
+                uriOrNull(item["sourceUri"]),
+                uriOrNull(item["imageUri"]),
+            )
+        )
+    }
+
+    return ImmutableList.copyOf(items)
+}
+
+fun uriOrNull(value: Any?): Uri? {
+    if (value !is String) {
+      return null
+    }
+
+    if (value == "") {
+      return null
+    }
+
+    return Uri.parse(value)
 }

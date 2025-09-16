@@ -455,24 +455,64 @@ export async function validateOnStartCommandIntent(): Promise<boolean> {
   return TrackPlayer.validateOnStartCommandIntent();
 }
 
+type MediaItem = {
+  mediaId: string;
+  isPlayable: boolean;
+  title?: string;
+  subtitle?: string;
+  album?: string;
+  artist?: string;
+  genre?: string;
+  sourceUri?: string;
+  imageUri?: string;
+};
+
+function generateItems(prefix: string, num: number = 5): MediaItem[] {
+  let items: MediaItem[] = [];
+
+  for (let i = 0; i < num; i++) {
+    const key = `${prefix}${i + 1}`;
+    items.push({
+      mediaId: key,
+      isPlayable: false,
+      title: key,
+      subtitle: key,
+      imageUri: 'https://rntp.dev/example/Longing.jpeg',
+    });
+  }
+
+  return items;
+}
 /* eslint-disable  @typescript-eslint/no-explicit-any */
-(global as any).getValueAsync ??= async (input: string) => {
+(global as any).__rntpAAGetChildrenAsync ??= async (input: string) => {
   console.log('[JS] got:', input);
-  const p = new Promise((resolve, _reject) => {
-    resolve([
+  let items: MediaItem[] = [];
+
+  if (input === '/') {
+    items = [
       {
-        status: 'ok',
-        echo: input,
-        length: input.length,
+        mediaId: 'playlists',
+        isPlayable: false,
+        title: 'Playlist$$$',
       },
       {
-        status: 'ok',
-        echo: input,
-        length: input.length,
+        mediaId: 'albums',
+        isPlayable: false,
+        title: 'Album$',
       },
-    ]);
-  });
-  return p;
+      {
+        mediaId: 'artists',
+        isPlayable: false,
+        title: 'Artist$',
+      },
+    ];
+  } else if (input === 'playlists') {
+    items = generateItems('Playlist');
+  } else if (input === 'albums') {
+    items = generateItems('Album', 7);
+  }
+
+  return items;
 };
 
 /* eslint-disable  @typescript-eslint/no-explicit-any */

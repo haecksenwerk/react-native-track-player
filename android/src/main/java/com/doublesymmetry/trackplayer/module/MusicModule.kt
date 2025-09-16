@@ -25,7 +25,6 @@ import com.facebook.react.bridge.*
 import androidx.media3.common.Player
 import androidx.media3.session.MediaBrowser
 import androidx.media3.session.SessionToken
-import com.doublesymmetry.trackplayer.JsiBridge
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.GlobalScope
@@ -37,7 +36,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking // if you want to use runBlocking
-
+import kotlinx.coroutines.withContext
 import com.doublesymmetry.trackplayer.NativeTrackPlayerSpec
 
 
@@ -79,6 +78,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
     }
 
     override fun onServiceConnected(name: ComponentName, service: IBinder) {
+        Timber.tag("RNTP").d("onServiceConnected >>>>>>>>>>>>")
         launchInScope {
             // If a binder already exists, don't get a new one
             if (!::musicService.isInitialized) {
@@ -120,6 +120,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         return Track(context, bundle, musicService.ratingType)
     }
 
+    // TODO: remove this as it's not currently used
     private fun hashmapToMediaItem(hashmap: HashMap<String, String>): MediaItem {
          val mediaUri = hashmap["mediaUri"]
          val iconUri = hashmap["iconUri"]
@@ -172,12 +173,6 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
              extras = extras
          )
      }
-
-    private fun readableArrayToMediaItems(data: ArrayList<HashMap<String, String>>): MutableList<MediaItem> {
-         return data.map {
-             hashmapToMediaItem(it)
-         }.toMutableList()
-    }
 
     private fun rejectWithException(callback: Promise, exception: Exception) {
         when (exception) {
@@ -462,11 +457,6 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
 
         musicService.play()
         callback.resolve(null)
-
-
-        Timber.tag("RNTP").d("setupPlayer before")
-        callJsExample("getValueAsync")
-        Timber.tag("RNTP").d("setupPlayer after")
     }
 
     override fun pause(callback: Promise) = launchInScope {
@@ -637,17 +627,6 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
     private fun launchInScope(block: suspend () -> Unit) {
         scope.launch {
             block()
-        }
-    }
-
-    /** ----------------- JSI Integration ----------------- **/
-    private val jsiBridge = JsiBridge(reactContext)
-
-    fun callJsExample(fnName: String) {
-        CoroutineScope(Dispatchers.Main).launch {
-          Timber.tag("RNTP").d("callJsExample $fnName")
-          val result = jsiBridge.callJSAndResolve(fnName, "Give me something good")
-          Timber.tag("RNTP").d("callJsExample $fnName: $result")
         }
     }
 }

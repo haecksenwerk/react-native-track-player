@@ -2,7 +2,7 @@ package com.doublesymmetry.trackplayer
 
 import android.util.Log
 import com.facebook.react.bridge.*
-import com.facebook.react.bridge.ReactApplicationContext
+import com.facebook.react.bridge.ReactContext
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.*
 import kotlin.coroutines.resume
@@ -10,7 +10,7 @@ import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import timber.log.Timber
 
-class JsiBridge(private val reactContext: ReactApplicationContext) {
+class JsiBridge(private val reactContext: ReactContext) {
 
     // Must be constructed before init block uses it
     private val initialized = AtomicBoolean(false)
