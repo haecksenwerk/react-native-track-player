@@ -88,14 +88,21 @@ class QueuedAudioPlayer(
     }
 
     override fun load(item: AudioItem) {
-        if (queue.isEmpty()) {
-            add(item)
+        val useCurrent = playerState === AudioPlayerState.READY || queue.isEmpty()
+        val nextIndex = if (useCurrent) {
+            // if we're ready we haven't played anything yet so insert before
+            currentIndex
         } else {
-            exoPlayer.addMediaItem(currentIndex + 1, item.toMediaItem())
-            exoPlayer.removeMediaItem(currentIndex)
-            exoPlayer.seekTo(currentIndex, C.TIME_UNSET)
-            exoPlayer.prepare()
+            // if we're not "ready", we've played, so insert after
+            currentIndex + 1
         }
+        // NOTE: the only way to get accurate playback events while also
+        // maintaining consistency between the managed `queue` and exoPlayer's
+        // `playlist` is to manage things within our `queue`, as exoPlayer has
+        // no equivalent of a `load` and all items end up on the `playlist`.
+        // Don't mutate exoPlayer directly here.
+        add(listOf(item), nextIndex)
+        jumpToItem(nextIndex)
     }
 
     /**

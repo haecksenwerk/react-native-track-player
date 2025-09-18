@@ -1,9 +1,12 @@
 package com.doublesymmetry.trackplayer.utils
 
+import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import com.doublesymmetry.trackplayer.model.Track
+import com.doublesymmetry.trackplayer.utils.BundleUtils
 import com.google.common.collect.ImmutableList
 import timber.log.Timber
 
@@ -42,6 +45,34 @@ fun buildMediaItem(
         .build()
 }
 
+fun buildMediaItemFromAnyHashMap(item: Any?): MediaItem? {
+  if (item !is java.util.HashMap<*, *>) {
+      return null
+  }
+
+  // guard against invalid mediaIds
+  if (
+      item["mediaId"] !is String ||
+      item["mediaId"] == null ||
+      item["mediaId"] == ""
+  ) {
+      return null
+  }
+
+  return buildMediaItem(
+      item["title"] as? String ?: null,
+      item["subtitle"] as? String ?: null,
+      item["mediaId"] as String,
+      item["isPlayable"] as? Boolean ?: false,
+      emptyList<MediaItem.SubtitleConfiguration>(),
+      item["album"] as? String ?: null,
+      item["artist"] as? String ?: null,
+      item["genre"] as? String ?: null,
+      uriOrNull(item["sourceUri"]),
+      uriOrNull(item["imageUri"]),
+  )
+}
+
 
 fun buildMediaItemListFromAny(value: Any?): ImmutableList<MediaItem> {
     if (value !is ArrayList<*>) {
@@ -50,33 +81,12 @@ fun buildMediaItemListFromAny(value: Any?): ImmutableList<MediaItem> {
 
     val items = mutableListOf<MediaItem>()
     for (item in value) {
-        if (item !is java.util.HashMap<*, *>) {
+        val mediaItem = buildMediaItemFromAnyHashMap(item);
+        if (mediaItem !is MediaItem) {
             continue
         }
 
-        // guard against invalid mediaIds
-        if (
-            item["mediaId"] !is String ||
-            item["mediaId"] == null ||
-            item["mediaId"] == ""
-        ) {
-            continue
-        }
-
-        items.add(
-            buildMediaItem(
-                item["title"] as? String ?: null,
-                item["subtitle"] as? String ?: null,
-                item["mediaId"] as String,
-                item["isPlayable"] as? Boolean ?: false,
-                emptyList<MediaItem.SubtitleConfiguration>(),
-                item["album"] as? String ?: null,
-                item["artist"] as? String ?: null,
-                item["genre"] as? String ?: null,
-                uriOrNull(item["sourceUri"]),
-                uriOrNull(item["imageUri"]),
-            )
-        )
+        items.add(mediaItem)
     }
 
     return ImmutableList.copyOf(items)
@@ -92,4 +102,18 @@ fun uriOrNull(value: Any?): Uri? {
     }
 
     return Uri.parse(value)
+}
+
+
+fun buildTrackFromAny(
+  context: Context,
+  ratingType: Int,
+  value: Any?,
+): Track? {
+  val bundle = BundleUtils.getBundleFromAnyHashMap(value)
+  if (bundle == null) {
+      return null
+  }
+
+  return Track(context, bundle, ratingType)
 }

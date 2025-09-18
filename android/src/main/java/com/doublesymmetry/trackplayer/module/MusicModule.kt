@@ -78,7 +78,7 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
     }
 
     override fun onServiceConnected(name: ComponentName, service: IBinder) {
-        Timber.tag("RNTP").d("onServiceConnected >>>>>>>>>>>>")
+        Timber.tag("RNTP").d("onServiceConnected $name")
         launchInScope {
             // If a binder already exists, don't get a new one
             if (!::musicService.isInitialized) {

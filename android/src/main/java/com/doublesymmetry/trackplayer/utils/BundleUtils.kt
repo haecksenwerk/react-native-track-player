@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
+import android.os.Parcelable
 import android.support.v4.media.RatingCompat
 import com.doublesymmetry.trackplayer.R
 import com.facebook.react.views.imagehelper.ResourceDrawableIdHelper
@@ -130,5 +131,30 @@ object BundleUtils {
         return if (value is Number) {
             value.toDouble()
         } else null
+    }
+
+    fun getBundleFromAnyHashMap(item: Any?): Bundle? {
+      if (item !is java.util.HashMap<*, *>) {
+          return null
+      }
+
+      val bundle = Bundle()
+      for ((key, value) in item) {
+          if (key !is String) continue // Bundle keys must be Strings
+
+          when (value) {
+              is String -> bundle.putString(key, value)
+              is Int -> bundle.putInt(key, value)
+              is Boolean -> bundle.putBoolean(key, value)
+              is Float -> bundle.putFloat(key, value)
+              is Double -> bundle.putDouble(key, value)
+              is Long -> bundle.putLong(key, value)
+              is Bundle -> bundle.putBundle(key, value)
+              is Parcelable -> bundle.putParcelable(key, value)
+              // Add more types as needed
+              null -> bundle.putString(key, null) // bundle doesn’t support nulls directly
+          }
+      }
+      return bundle
     }
 }

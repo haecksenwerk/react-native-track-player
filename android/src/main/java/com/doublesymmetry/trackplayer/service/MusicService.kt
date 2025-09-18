@@ -48,6 +48,8 @@ import com.doublesymmetry.trackplayer.utils.BundleUtils.setRating
 import com.doublesymmetry.trackplayer.utils.CoilBitmapLoader
 import com.doublesymmetry.trackplayer.utils.buildMediaItem
 import com.doublesymmetry.trackplayer.utils.buildMediaItemListFromAny
+import com.doublesymmetry.trackplayer.utils.buildMediaItemFromAnyHashMap
+import com.doublesymmetry.trackplayer.utils.buildTrackFromAny
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.jstasks.HeadlessJsTaskConfig
 import com.google.common.collect.ImmutableList
@@ -540,13 +542,25 @@ class MusicService : HeadlessJsMediaService() {
 
     private fun emitPlaybackTrackChangedEvents(
         previousIndex: Int?,
-        oldPosition: Double
+        transition: AudioItemTransition?
     ) {
+        val oldPosition = (transition?.reason?.oldPosition ?: 0).toSeconds()
         val bundle = Bundle()
         bundle.putDouble("lastPosition", oldPosition)
+        bundle.putInt("index", player.currentIndex)
+
+        // always prefer the item from the transition, as it's always what's
+        // actually playing in exoPlayer
+        val current = transition?.mediaItem?.let { AudioItem.fromMediaItem(it) }
+        if (current is TrackAudioItem) {
+          bundle.putBundle("track", current.track.originalItem)
+        }
+
         if (tracks.isNotEmpty()) {
-            bundle.putInt("index", player.currentIndex)
-            bundle.putBundle("track", tracks[player.currentIndex].originalItem)
+            if (!bundle.containsKey("track")) {
+                bundle.putBundle("track", tracks[player.currentIndex].originalItem)
+            }
+
             if (previousIndex != null) {
                 bundle.putInt("lastIndex", previousIndex)
                 bundle.putBundle("lastTrack", tracks[previousIndex].originalItem)
@@ -579,7 +593,7 @@ class MusicService : HeadlessJsMediaService() {
                 if (it !is AudioItemTransitionReason.REPEAT) {
                     emitPlaybackTrackChangedEvents(
                         player.previousIndex,
-                        (it?.oldPosition ?: 0).toSeconds()
+                        it
                     )
                 }
             }
@@ -1036,13 +1050,18 @@ class MusicService : HeadlessJsMediaService() {
 
             // Launch coroutine and return ListenableFuture
             return CoroutineScope(Dispatchers.Main).future {
-                val jsResult = callJS("__rntpAAGetChildrenAsync", parentId)
-                val value = jsResult["value"]
+                try {
+                  val jsResult = callJS("__rntpAAGetChildrenAsync", parentId)
+                  val value = jsResult["value"]
 
-                return@future LibraryResult.ofItemList(
-                    buildMediaItemListFromAny(value),
-                    null
-                )
+                  return@future LibraryResult.ofItemList(
+                      buildMediaItemListFromAny(value),
+                      null
+                  )
+                } catch (e: Exception) {
+                  Timber.tag("RNTP").e("onGetChildren: failed to fetch item {parentId: $parentId, page: $page, pageSize: $pageSize }")
+                  LibraryResult.ofError(LibraryResult.RESULT_ERROR_UNKNOWN)
+                }
             }
         }
 
@@ -1053,7 +1072,29 @@ class MusicService : HeadlessJsMediaService() {
         ): ListenableFuture<LibraryResult<MediaItem>> {
             Timber.tag("RNTP").d("onGetItem: ${browser.packageName}, mediaId = $mediaId")
             // emit(MusicEvents.BUTTON_PLAY_FROM_ID, Bundle().apply { putString("id", mediaId) })
-            return Futures.immediateFuture(LibraryResult.ofItem(rootItem, null))
+
+            if (mediaId == "/") {
+              return Futures.immediateFuture(
+                LibraryResult.ofItem(rootItem, null)
+              )
+            }
+
+            // Launch coroutine and return ListenableFuture
+            return CoroutineScope(Dispatchers.Main).future {
+                val value = callJS("__rntpAAGetItemAsync", mediaId)
+                Timber.tag("RNTP").d("onGetItem: $mediaId - $value")
+
+                if (value == null) {
+                  return@future LibraryResult.ofItem(rootItem, null)
+                }
+
+                val item = buildMediaItemFromAnyHashMap(value);
+                if (item == null) {
+                  return@future LibraryResult.ofItem(rootItem, null)
+                }
+
+                return@future LibraryResult.ofItem(item, null)
+            }
         }
 
         override fun onSearch(
@@ -1072,7 +1113,36 @@ class MusicService : HeadlessJsMediaService() {
             mediaItems: MutableList<MediaItem>
         ): ListenableFuture<MutableList<MediaItem>> {
             Timber.tag("RNTP").d("onAddMediaItems: ${controller.packageName}, ${mediaItems[0].mediaId}, ${mediaItems.size}")
-            return super.onAddMediaItems(mediaSession, controller, mediaItems)
+
+            val mediaItem = mediaItems[0]
+
+            if (mediaItem == null) {
+                return Futures.immediateFuture(mediaItems.toMutableList())
+            }
+
+
+            // Launch coroutine and return ListenableFuture
+            return CoroutineScope(Dispatchers.Main).future {
+                val mediaId = mediaItem.mediaId
+                val value = callJS("__rntpAAGetTrackAsync", mediaId)
+                Timber.tag("RNTP").d("onAddMediaItems: $mediaId - $value")
+
+                if (value == null) {
+                  return@future mediaItems.toMutableList()
+                }
+
+                val track = buildTrackFromAny(
+                    getReactContext(),
+                    ratingType,
+                    value,
+                )
+                if (track == null) {
+                  return@future mediaItems.toMutableList()
+                }
+
+                player.load(track.toAudioItem())
+                return@future mediaItems.toMutableList()
+            }
         }
 
         override fun onSetMediaItems(

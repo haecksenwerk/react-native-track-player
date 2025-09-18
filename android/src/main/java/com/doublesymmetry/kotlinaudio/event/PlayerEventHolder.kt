@@ -29,7 +29,7 @@ class PlayerEventHolder {
      */
     var playWhenReadyChange = _playWhenReadyChange.asSharedFlow()
 
-    private var _audioItemTransition = MutableSharedFlow<AudioItemTransitionReason?>(1)
+    private var _audioItemTransition = MutableSharedFlow<AudioItemTransition?>(1)
 
     /**
      * Use these events to track when and why an [AudioItem] transitions to another.
@@ -79,9 +79,9 @@ class PlayerEventHolder {
         }
     }
 
-    internal fun updateAudioItemTransition(reason: AudioItemTransitionReason) {
+    internal fun updateAudioItemTransition(transition: AudioItemTransition) {
         coroutineScope.launch {
-            _audioItemTransition.emit(reason)
+            _audioItemTransition.emit(transition)
         }
     }
 

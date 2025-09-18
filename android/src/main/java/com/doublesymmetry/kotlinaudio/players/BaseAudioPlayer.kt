@@ -25,6 +25,7 @@ import androidx.media3.session.legacy.RatingCompat
 import com.doublesymmetry.kotlinaudio.event.PlayerEventHolder
 import com.doublesymmetry.kotlinaudio.models.AudioItem
 import com.doublesymmetry.kotlinaudio.models.AudioItemTransitionReason
+import com.doublesymmetry.kotlinaudio.models.AudioItemTransition
 import com.doublesymmetry.kotlinaudio.models.AudioPlayerState
 import com.doublesymmetry.kotlinaudio.models.MediaSessionCallback
 import com.doublesymmetry.kotlinaudio.models.PlayWhenReadyChangeData
@@ -351,16 +352,28 @@ abstract class BaseAudioPlayer internal constructor(
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             when (reason) {
                 Player.MEDIA_ITEM_TRANSITION_REASON_AUTO -> playerEventHolder.updateAudioItemTransition(
-                    AudioItemTransitionReason.AUTO(oldPosition)
+                    AudioItemTransition(
+                        mediaItem,
+                        AudioItemTransitionReason.AUTO(oldPosition),
+                    )
                 )
                 Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED -> playerEventHolder.updateAudioItemTransition(
-                    AudioItemTransitionReason.QUEUE_CHANGED(oldPosition)
+                    AudioItemTransition(
+                        mediaItem,
+                        AudioItemTransitionReason.QUEUE_CHANGED(oldPosition),
+                    )
                 )
                 Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT -> playerEventHolder.updateAudioItemTransition(
-                    AudioItemTransitionReason.REPEAT(oldPosition)
+                    AudioItemTransition(
+                        mediaItem,
+                        AudioItemTransitionReason.REPEAT(oldPosition),
+                    )
                 )
                 Player.MEDIA_ITEM_TRANSITION_REASON_SEEK -> playerEventHolder.updateAudioItemTransition(
-                    AudioItemTransitionReason.SEEK_TO_ANOTHER_AUDIO_ITEM(oldPosition)
+                    AudioItemTransition(
+                        mediaItem,
+                        AudioItemTransitionReason.SEEK_TO_ANOTHER_AUDIO_ITEM(oldPosition),
+                    )
                 )
             }
         }
@@ -539,7 +552,7 @@ abstract class BaseAudioPlayer internal constructor(
             focus = AudioFocusRequestCompat.Builder(AudioManagerCompat.AUDIOFOCUS_GAIN)
                 .setOnAudioFocusChangeListener(
                     { focusChange ->
-                        Timber.d("Audio focus changed")
+                        Timber.tag("RNTP").d("Audio focus changed")
                         val isPermanent = focusChange == AudioManager.AUDIOFOCUS_LOSS
                         val isPaused = when (focusChange) {
                             AudioManager.AUDIOFOCUS_LOSS, AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> true
