@@ -8,6 +8,13 @@ export const DefaultRepeatMode = RepeatMode.Queue;
 export const DefaultAudioServiceBehaviour =
   AppKilledPlaybackBehavior.StopPlaybackAndRemoveNotification;
 
+
+import {
+  MEDIA_ID_TO_SELF_MAP,
+  MEDIA_ID_TO_CHILDREN,
+  TRACKS_MAP,
+} from './DemoAndroidAutoData';
+
 const setupPlayer = async (
   options: Parameters<typeof TrackPlayer.setupPlayer>[0]
 ) => {
@@ -22,6 +29,20 @@ export const SetupService = async () => {
     await TrackPlayer.updateOptions({
       android: {
         appKilledPlaybackBehavior: DefaultAudioServiceBehaviour,
+        auto: {
+          getChildren: async (parentId: string) => {
+            // here you can return something from your backend
+            return MEDIA_ID_TO_CHILDREN[parentId] || [];
+          },
+          getItem: async (mediaId: string) => {
+            // here you can return something from your backend
+            return MEDIA_ID_TO_SELF_MAP[mediaId] || null;
+          },
+          getTrack: async (mediaId: string) => {
+            // here you can return something from your backend
+            return TRACKS_MAP[mediaId] || null;
+          },
+        },
       },
       capabilities: [
         Capability.Play,

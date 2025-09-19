@@ -1,4 +1,5 @@
 import type { AppKilledPlaybackBehavior } from '../constants';
+import type { AndroidAutoCallbacks } from './AndroidAutoCallbacks';
 
 export interface AndroidOptions {
   /**
@@ -37,4 +38,6 @@ export interface AndroidOptions {
    * @default false
    */
   shuffle?: boolean;
+
+  auto?: AndroidAutoCallbacks;
 }

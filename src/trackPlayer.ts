@@ -12,6 +12,7 @@ import type {
   Track,
   TrackMetadataBase,
   UpdateOptions,
+  AndroidAutoCallbacks,
 } from './interfaces';
 import resolveAssetSource from './resolveAssetSource';
 import TrackPlayer from './NativeTrackPlayer';
@@ -194,6 +195,7 @@ export async function skipToPrevious(initialPosition = -1): Promise<void> {
 
 // MARK: - Control Center / Notifications API
 
+let androidAutoCallbacks: AndroidAutoCallbacks | undefined = undefined;
 /**
  * Updates the configuration for the components.
  *
@@ -203,6 +205,13 @@ export async function skipToPrevious(initialPosition = -1): Promise<void> {
 export async function updateOptions(
   options: UpdateOptions = {}
 ): Promise<void> {
+  if (options.android?.auto) {
+    androidAutoCallbacks = options.android.auto;
+    delete options.android.auto;
+  } else {
+    androidAutoCallbacks = undefined;
+  }
+
   return TrackPlayer.updateOptions({
     ...options,
     android: {
@@ -455,180 +464,32 @@ export async function validateOnStartCommandIntent(): Promise<boolean> {
   return TrackPlayer.validateOnStartCommandIntent();
 }
 
-type MediaItem = {
-  mediaId: string;
-  isPlayable: boolean;
-  title?: string;
-  subtitle?: string;
-  album?: string;
-  artist?: string;
-  genre?: string;
-  sourceUri?: string;
-  imageUri?: string;
-};
-
-function generateItems(prefix: string, num: number = 5): MediaItem[] {
-  let items: MediaItem[] = [];
-
-  for (let i = 0; i < num; i++) {
-    const key = `${prefix}${i + 1}`;
-    items.push({
-      mediaId: key,
-      isPlayable: false,
-      title: key,
-      subtitle: key,
-      imageUri: 'https://rntp.dev/example/Longing.jpeg',
-    });
-  }
-
-  return items;
-}
-
-const tracks: Track[] = [
-  {
-    "url": "https://rntp.dev/example/Longing.mp3",
-    "title": "$$$Longing",
-    "artist": "David Chavez",
-    "artwork": "https://rntp.dev/example/Longing.jpeg",
-    "duration": 143
-  },
-  {
-    "url": "https://rntp.dev/example/Soul%20Searching.mp3",
-    "title": "$$$Soul Searching (Demo)",
-    "artist": "David Chavez",
-    "artwork": "https://rntp.dev/example/Soul%20Searching.jpeg",
-    "duration": 77
-  },
-  {
-    "url": "https://rntp.dev/example/Lullaby%20(Demo).mp3",
-    "title": "$$$Lullaby (Demo)",
-    "artist": "David Chavez",
-    "artwork": "https://rntp.dev/example/Lullaby%20(Demo).jpeg",
-    "duration": 71
-  },
-  {
-    "url": "https://rntp.dev/example/Rhythm%20City%20(Demo).mp3",
-    "title": "$$$Rhythm City (Demo)",
-    "artist": "David Chavez",
-    "artwork": "https://rntp.dev/example/Rhythm%20City%20(Demo).jpeg",
-    "duration": 106
-  },
-  {
-    "url": "https://rntp.dev/example/hls/whip/playlist.m3u8",
-    "title": "$$$Whip",
-    "artist": "prazkhanal",
-    "artwork": "https://rntp.dev/example/hls/whip/whip.jpeg",
-    "type": "hls"
-  },
-  {
-    "url": "https://ais-sa5.cdnstream1.com/b75154_128mp3",
-    "title": "$$$Smooth Jazz 24/7",
-    "artist": "New York, NY",
-    "artwork": "https://rntp.dev/example/smooth-jazz-24-7.jpeg",
-    "isLiveStream": true
-  },
-  {
-    "url": "https://traffic.libsyn.com/atpfm/atp545.mp3",
-    "title": "Chapters"
-  },
-  {
-    "url": "https://kut.streamguys1.com/kutx-app.aac?listenerId=123456784123",
-    "title": "KUTX"
-  }
-];
-
-function trackToMediaItem(track: Track): MediaItem {
-  return {
-    mediaId: track.mediaId || track.title || track.url,
-    isPlayable: true,
-    title: track.title,
-    imageUri: track.artwork,
-    sourceUri: track.url,
-  };
-}
-
-const tracksAsMediaItems = tracks.map((track) => trackToMediaItem(track));
-const playlists = generateItems('Playlist');
-const albums = generateItems('Album', 7);
-function itemsToMapOfItems(items: MediaItem[]) {
-  return items.reduce<Record<string, MediaItem>>((acc, val) => {
-    acc[val.mediaId] = val;
-    return acc;
-  }, {});
-}
-function tracksToMapOfTracks(items: Track[]) {
-  return items.reduce<Record<string, Track>>((acc, val) => {
-    const item = trackToMediaItem(val);
-    acc[item.mediaId] = val;
-    return acc;
-  }, {});
-}
-const root: MediaItem[] = [
-  {
-    mediaId: 'playlists',
-    isPlayable: false,
-    title: 'Playlist$$$',
-  },
-  {
-    mediaId: 'albums',
-    isPlayable: false,
-    title: 'Album$',
-  },
-  {
-    mediaId: 'artists',
-    isPlayable: false,
-    title: 'Artist$',
-  },
-];
-const tree: Record<string, MediaItem[]> = {
-  '/': root,
-  'playlists': playlists,
-  'albums': albums,
-  'Playlist1': tracksAsMediaItems,
-};
-const children: Record<string, MediaItem> = {
-  ...itemsToMapOfItems(root),
-  ...itemsToMapOfItems(playlists),
-  ...itemsToMapOfItems(albums),
-  ...itemsToMapOfItems(tracksAsMediaItems),
-};
 
 /* eslint-disable  @typescript-eslint/no-explicit-any */
 (global as any).__rntpAAGetChildrenAsync ??= async (parentId: string) => {
-  console.log('[JS] got:', parentId);
-  let items: MediaItem[] = [];
-
-  if (tree[parentId]) {
-    items = tree[parentId];
+  if (androidAutoCallbacks) {
+    return androidAutoCallbacks.getChildren(parentId);
   }
 
-  return items;
+  return [];
 };
 
-console.log(">>>>>>>>> children", children);
 (global as any).__rntpAAGetItemAsync ??= async (mediaId: string) => {
-  console.log(">>>>>>>>> __rntpAAGetItemAsync", mediaId, children[mediaId]);
-  if (children[mediaId]) {
-    return children[mediaId];
+  if (androidAutoCallbacks) {
+    return androidAutoCallbacks.getItem(mediaId);
   }
+
   return null;
 };
 
-let num = 0;
-(global as any).__rntpAAGetTrackAsync ??= async (mediaId: string) => {
-  const track = tracksToMapOfTracks(tracks)[mediaId];
-
-  if (!track) {
-    return null;
+(global as any).__rntpAAGetTrackAsync ??= async (
+  mediaId: string
+): Promise<Track | null> => {
+  if (androidAutoCallbacks) {
+    return androidAutoCallbacks.getTrack(mediaId);
   }
 
-  const parsed = new URL(track.url);
-  parsed.searchParams.delete('key');
-  parsed.searchParams.append('key', num.toString());
-  num++;
-  track.url = parsed.toString().replace(/\/\?/g, '?');
-  console.log(">>>>>>>>> __rntpAAGetTrackAsync", track);
-  return track;
+  return null;
 };
 
 /* eslint-disable  @typescript-eslint/no-explicit-any */
