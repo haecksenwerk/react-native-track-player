@@ -170,11 +170,8 @@ class MusicService : HeadlessJsMediaService() {
             // HACK: this is not supposed to be here. I definitely screwed up. but Why?
             onMediaKeyEvent(intent)
         }
-        // HACK: Why is onPlay triggering onStartCommand??
-        if (!commandStarted) {
-            commandStarted = true
-            super.onStartCommand(intent, flags, startId)
-        }
+        // Always call super.onStartCommand() to keep foreground service status
++       super.onStartCommand(intent, flags, startId)
         return START_STICKY
     }
 
@@ -206,7 +203,7 @@ class MusicService : HeadlessJsMediaService() {
             handleAudioFocus = playerOptions?.getBoolean(AUTO_HANDLE_INTERRUPTIONS) ?: true,
             interceptPlayerActionsTriggeredExternally = true,
             skipSilence = playerOptions?.getBoolean(SKIP_SILENCE) ?: false,
-            wakeMode = playerOptions?.getInt(WAKE_MODE, 0) ?: 0
+            wakeMode = BundleUtils.getInt(playerOptions, WAKE_MODE, 0)
         )
         player = QueuedAudioPlayer(this@MusicService, options)
         fakePlayer.release()
