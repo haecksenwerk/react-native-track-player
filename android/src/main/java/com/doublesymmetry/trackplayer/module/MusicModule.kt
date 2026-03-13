@@ -217,6 +217,11 @@ class MusicModule(reactContext: ReactApplicationContext) : NativeTrackPlayerSpec
         val musicModule = this
         try {
             Intent(context, MusicService::class.java).also { intent ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
                 context.bindService(intent, musicModule, Context.BIND_AUTO_CREATE)
                 val sessionToken =
                     SessionToken(context, ComponentName(context, MusicService::class.java))
